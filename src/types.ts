@@ -84,6 +84,21 @@ export interface WorkoutLog {
   exercises: LoggedExercise[];
   /** Total volume (Σ weight × reps) — cached for fast dashboards. */
   totalVolume: number;
+  /** How long the session lasted, in seconds. */
+  durationSeconds?: number;
+}
+
+/** A live session persisted so it survives app restarts. */
+export interface ActiveWorkout {
+  routineId: string;
+  startedAt: number;
+  exercises: LoggedExercise[];
+}
+
+/** One body-weight measurement. */
+export interface BodyWeightEntry {
+  date: number;
+  weight: number;
 }
 
 export type Unit = 'lb' | 'kg';

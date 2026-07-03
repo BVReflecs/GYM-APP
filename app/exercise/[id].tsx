@@ -5,12 +5,29 @@ import { getExercise } from '@/data/exercises';
 import { useStore } from '@/storage/store';
 import { colors, muscleColors, radius, spacing } from '@/theme';
 import { Card, Chip, EmptyState, MuscleChip, PrimaryButton } from '@/components/ui';
+import { MiniBarChart } from '@/components/chart';
 
 export default function ExerciseDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { records, profile } = useStore();
+  const { records, profile, logs } = useStore();
   const ex = getExercise(id);
+
+  // Best set volume per session for this exercise, oldest -> newest.
+  const progress = [...logs]
+    .sort((a, b) => a.date - b.date)
+    .map((log) => {
+      const entry = log.exercises.find((e) => e.exerciseId === id);
+      if (!entry) return null;
+      const best = Math.max(...entry.sets.map((s) => s.weight * s.reps), 0);
+      if (best <= 0) return null;
+      return {
+        label: new Date(log.date).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }),
+        value: best,
+      };
+    })
+    .filter((p): p is { label: string; value: number } => p !== null)
+    .slice(-10);
 
   if (!ex) {
     return <EmptyState icon="alert-circle" title="Ejercicio no encontrado" />;
@@ -71,6 +88,18 @@ export default function ExerciseDetail() {
             </Text>
           </View>
         </Card>
+      )}
+
+      {/* Progress chart */}
+      {progress.length >= 2 && (
+        <Section title="Tu progreso" icon="trending-up">
+          <Card>
+            <Text style={styles.chartCaption}>
+              Mejor set por sesión (peso × reps, {profile.unit}) · últimas {progress.length} sesiones
+            </Text>
+            <MiniBarChart data={progress} unit={profile.unit} />
+          </Card>
+        </Section>
       )}
 
       {/* Muscles worked */}
@@ -192,6 +221,7 @@ const styles = StyleSheet.create({
   prTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
   prSub: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   prTarget: { fontSize: 16, fontWeight: '900', color: colors.accent, textAlign: 'right' },
+  chartCaption: { fontSize: 12, color: colors.textMuted, marginBottom: spacing.md, lineHeight: 17 },
   sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.md },
   sectionTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   subLabel: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1, marginBottom: 8 },

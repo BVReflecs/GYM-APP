@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +25,17 @@ export default function RoutineDetail() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}>
-        <Text style={styles.title}>{routine.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+          <Text style={[styles.title, { flex: 1 }]}>{routine.name}</Text>
+          <Pressable
+            onPress={() => router.push(`/routine/new?edit=${routine.id}`)}
+            style={styles.editBtn}
+            hitSlop={8}
+          >
+            <Ionicons name="pencil" size={16} color={colors.text} />
+            <Text style={styles.editBtnText}>Editar</Text>
+          </Pressable>
+        </View>
         <View style={{ flexDirection: 'row', gap: 8, marginTop: spacing.sm }}>
           <Chip label={goal.title} color={c} />
           <Chip label={`${routine.exercises.length} ejercicios`} color={colors.textMuted} />
@@ -80,6 +90,17 @@ export default function RoutineDetail() {
 
 const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '900', color: colors.text },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginLeft: spacing.md,
+  },
+  editBtnText: { fontSize: 13, fontWeight: '700', color: colors.text },
   hint: { fontSize: 13, color: colors.textFaint, marginTop: spacing.md, fontStyle: 'italic' },
   idx: {
     width: 34,

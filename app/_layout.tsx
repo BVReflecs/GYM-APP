@@ -33,6 +33,7 @@ export default function RootLayout() {
             name="workout/[id]"
             options={{ title: 'Entrenamiento', headerBackVisible: false }}
           />
+          <Stack.Screen name="history/[id]" options={{ title: 'Detalle' }} />
         </Stack>
       </StoreProvider>
     </SafeAreaProvider>

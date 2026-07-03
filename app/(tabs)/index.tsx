@@ -7,20 +7,16 @@ import { getGoal } from '@/data/goals';
 import { getExercise } from '@/data/exercises';
 import { colors, goalColors, radius, spacing } from '@/theme';
 import { Card, Chip, EmptyState, PrimaryButton, SectionHeader } from '@/components/ui';
-
-function startOfWeek(): number {
-  const d = new Date();
-  const day = (d.getDay() + 6) % 7; // Monday = 0
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - day);
-  return d.getTime();
-}
+import { formatDuration, startOfWeek } from '@/utils/dates';
 
 export default function Home() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { profile, routines, logs, records } = useStore();
+  const { profile, routines, logs, records, streak, activeWorkout, setActiveWorkout } = useStore();
   const goal = getGoal(profile.goal);
+  const activeRoutine = activeWorkout
+    ? routines.find((r) => r.id === activeWorkout.routineId)
+    : undefined;
 
   const weekStart = startOfWeek();
   const weekLogs = logs.filter((l) => l.date >= weekStart);
@@ -63,9 +59,42 @@ export default function Home() {
         </Pressable>
       </View>
 
+      {/* Resume in-progress workout */}
+      {activeWorkout && activeRoutine && (
+        <Card
+          style={{ marginBottom: spacing.lg, borderColor: colors.accent + '66', backgroundColor: colors.accentDim }}
+          onPress={() => router.push(`/workout/${activeWorkout.routineId}`)}
+        >
+          <View style={styles.routineRow}>
+            <View style={[styles.routineIcon, { backgroundColor: colors.accent + '33' }]}>
+              <Ionicons name="play" size={22} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.routineName}>Continuar entrenamiento</Text>
+              <Text style={styles.routineMeta}>
+                {activeRoutine.name} · empezó hace {formatDuration(Math.floor((Date.now() - activeWorkout.startedAt) / 1000))}
+              </Text>
+            </View>
+            <Pressable
+              hitSlop={10}
+              onPress={() => setActiveWorkout(null)}
+              style={styles.dismissBtn}
+            >
+              <Ionicons name="close" size={16} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        </Card>
+      )}
+
       {/* Weekly stats */}
       <View style={styles.statsRow}>
         <Stat icon="flame" value={String(weekLogs.length)} label="Esta semana" color={colors.primary} />
+        <Stat
+          icon="ribbon"
+          value={String(streak)}
+          label={streak === 1 ? 'Semana seguida' : 'Semanas seguidas'}
+          color={colors.accent}
+        />
         <Stat
           icon="stats-chart"
           value={weekVolume >= 1000 ? `${(weekVolume / 1000).toFixed(1)}k` : String(weekVolume)}
@@ -224,7 +253,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statValue: { fontSize: 22, fontWeight: '900', color: colors.text },
-  statLabel: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
+  statLabel: { fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center' },
   cardKicker: { fontSize: 11, fontWeight: '800', color: colors.textFaint, letterSpacing: 1 },
   goalTitle: { fontSize: 20, fontWeight: '800', color: colors.text },
   goalDesc: { fontSize: 14, color: colors.textMuted, marginTop: 4, lineHeight: 20 },
@@ -241,4 +270,12 @@ const styles = StyleSheet.create({
   beatBox: { alignItems: 'flex-end' },
   beatLabel: { fontSize: 9, fontWeight: '800', color: colors.accent, letterSpacing: 0.5 },
   beatValue: { fontSize: 15, fontWeight: '800', color: colors.text },
+  dismissBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

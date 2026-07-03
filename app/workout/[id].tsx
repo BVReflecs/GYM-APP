@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Vibration,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -17,30 +18,64 @@ import { getGoal } from '@/data/goals';
 import { colors, radius, spacing } from '@/theme';
 import { EmptyState, PrimaryButton } from '@/components/ui';
 import { LoggedExercise, LoggedSet, WorkoutLog } from '@/types';
+import { formatDuration } from '@/utils/dates';
 
 export default function Workout() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { routines, records, profile, addLog } = useStore();
+  const { routines, records, profile, addLog, activeWorkout, setActiveWorkout } = useStore();
 
   const routine = routines.find((r) => r.id === id);
+  // Resume a persisted session for this routine if one exists.
+  const resumed = activeWorkout && activeWorkout.routineId === id ? activeWorkout : null;
 
-  // Seed each exercise's sets, prefilling with the last performance (to beat).
+  const [startedAt] = useState<number>(() => resumed?.startedAt ?? Date.now());
   const [state, setState] = useState<LoggedExercise[]>(() => {
+    if (resumed) return resumed.exercises;
     if (!routine) return [];
     return routine.exercises.map((re) => {
       const pr = records[re.exerciseId];
       const weight = pr?.lastWeight ?? re.weight ?? 0;
-      const reps = re.reps;
       const sets: LoggedSet[] = Array.from({ length: re.sets }, () => ({
         weight,
-        reps,
+        reps: re.reps,
         done: false,
       }));
       return { exerciseId: re.exerciseId, sets };
     });
   });
+
+  // Session clock, ticking every second.
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = Math.floor((now - startedAt) / 1000);
+
+  // Rest countdown: absolute end timestamp (null = no timer running).
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const restLeft = restEndsAt ? Math.ceil((restEndsAt - now) / 1000) : 0;
+  const vibrated = useRef(false);
+  useEffect(() => {
+    if (restEndsAt && restLeft <= 0) {
+      if (!vibrated.current) {
+        vibrated.current = true;
+        Vibration.vibrate([0, 300, 150, 300]);
+      }
+      setRestEndsAt(null);
+    } else if (restLeft > 0) {
+      vibrated.current = false;
+    }
+  }, [restEndsAt, restLeft]);
+
+  // Persist the live session on every change so it survives app restarts.
+  useEffect(() => {
+    if (!routine) return;
+    setActiveWorkout({ routineId: routine.id, startedAt, exercises: state });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, startedAt, routine?.id]);
 
   const totalVolume = useMemo(
     () =>
@@ -60,6 +95,8 @@ export default function Workout() {
     return <EmptyState icon="alert-circle" title="Rutina no encontrada" />;
   }
 
+  const goal = getGoal(routine.goal);
+
   const update = (exIdx: number, setIdx: number, patch: Partial<LoggedSet>) => {
     setState((prev) =>
       prev.map((ex, i) =>
@@ -68,6 +105,12 @@ export default function Workout() {
           : { ...ex, sets: ex.sets.map((s, j) => (j === setIdx ? { ...s, ...patch } : s)) },
       ),
     );
+    // Completing a set starts (or restarts) the rest timer.
+    if (patch.done === true) {
+      setRestEndsAt(Date.now() + goal.restSeconds * 1000);
+    } else if (patch.done === false) {
+      setRestEndsAt(null);
+    }
   };
 
   const addSet = (exIdx: number) => {
@@ -103,21 +146,29 @@ export default function Workout() {
         .map((ex) => ({ ...ex, sets: ex.sets.filter((s) => s.done) }))
         .filter((ex) => ex.sets.length > 0),
       totalVolume,
+      durationSeconds: Math.floor((Date.now() - startedAt) / 1000),
     };
     addLog(log);
+    setActiveWorkout(null);
     Alert.alert('¡Entrenamiento guardado! 💪', 'Tus marcas se actualizaron. ¡A superarlas la próxima!', [
       { text: 'Ver progreso', onPress: () => router.replace('/(tabs)/progress') },
     ]);
   };
 
   const confirmExit = () => {
-    Alert.alert('Salir del entrenamiento', '¿Salir sin guardar? Se perderá lo registrado.', [
-      { text: 'Seguir', style: 'cancel' },
-      { text: 'Salir', style: 'destructive', onPress: () => router.back() },
+    Alert.alert('Salir del entrenamiento', 'Tu sesión queda guardada y puedes continuarla desde Inicio.', [
+      { text: 'Seguir entrenando', style: 'cancel' },
+      { text: 'Salir (guardar sesión)', onPress: () => router.back() },
+      {
+        text: 'Descartar sesión',
+        style: 'destructive',
+        onPress: () => {
+          setActiveWorkout(null);
+          router.back();
+        },
+      },
     ]);
   };
-
-  const goal = getGoal(routine.goal);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -132,12 +183,13 @@ export default function Workout() {
             {doneCount} series · {totalVolume.toLocaleString()} {profile.unit}
           </Text>
         </View>
-        <View style={styles.livePulse}>
-          <Ionicons name="barbell" size={18} color={colors.primary} />
+        <View style={styles.clockBox}>
+          <Ionicons name="time-outline" size={14} color={colors.primary} />
+          <Text style={styles.clockText}>{formatDuration(elapsed)}</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 120 }}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 190 }}>
         <Text style={styles.repHint}>Rango sugerido para {goal.title}: {goal.repRange}</Text>
 
         {state.map((ex, exIdx) => {
@@ -215,6 +267,26 @@ export default function Workout() {
         <Text style={styles.tip}>Mantén presionada la ✓ para borrar una serie.</Text>
       </ScrollView>
 
+      {/* Rest timer banner */}
+      {restEndsAt !== null && restLeft > 0 && (
+        <View style={[styles.restBar, { bottom: insets.bottom + 86 }]}>
+          <Ionicons name="hourglass" size={18} color={colors.bg} />
+          <Text style={styles.restText}>Descanso: {formatDuration(restLeft)}</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginLeft: 'auto' }}>
+            <Pressable
+              onPress={() => setRestEndsAt((e) => (e ? e + 15000 : e))}
+              style={styles.restBtn}
+              hitSlop={6}
+            >
+              <Text style={styles.restBtnText}>+15s</Text>
+            </Pressable>
+            <Pressable onPress={() => setRestEndsAt(null)} style={styles.restBtn} hitSlop={6}>
+              <Text style={styles.restBtnText}>Saltar</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
       <View style={[styles.finishBar, { paddingBottom: insets.bottom + spacing.md }]}>
         <PrimaryButton label="Terminar y guardar" icon="checkmark-done" variant="success" onPress={finish} />
       </View>
@@ -244,14 +316,16 @@ const styles = StyleSheet.create({
   },
   liveTitle: { fontSize: 18, fontWeight: '800', color: colors.text },
   liveMeta: { fontSize: 13, color: colors.textMuted, marginTop: 1 },
-  livePulse: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primaryDim,
+  clockBox: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: colors.primaryDim,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
+  clockText: { fontSize: 14, fontWeight: '800', color: colors.primary, fontVariant: ['tabular-nums'] },
   repHint: { fontSize: 13, color: colors.textFaint, fontStyle: 'italic', marginBottom: spacing.md },
   exBlock: {
     backgroundColor: colors.surface,
@@ -298,6 +372,26 @@ const styles = StyleSheet.create({
   addSet: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.sm, paddingVertical: 6 },
   addSetText: { fontSize: 14, fontWeight: '700', color: colors.primary },
   tip: { fontSize: 12, color: colors.textFaint, textAlign: 'center', marginTop: spacing.sm },
+  restBar: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.gold,
+    borderRadius: radius.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+  },
+  restText: { fontSize: 15, fontWeight: '900', color: colors.bg, fontVariant: ['tabular-nums'] },
+  restBtn: {
+    backgroundColor: '#00000022',
+    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  restBtnText: { fontSize: 13, fontWeight: '800', color: colors.bg },
   finishBar: {
     position: 'absolute',
     left: 0,

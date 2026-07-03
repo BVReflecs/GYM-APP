@@ -14,10 +14,16 @@ Construida con **React Native + Expo (Expo Router)** y **TypeScript**. Todos los
   - 💪 **Músculo trabajado** (principales y secundarios).
   - 📋 **Instrucciones paso a paso** y consejos clave.
   - 🔀 **Variaciones** del mismo ejercicio.
-- **Crear rutinas** eligiendo ejercicios y definiendo series y repeticiones.
-- **Entrenamiento en vivo** — Registra peso, repeticiones y series completadas set por set.
+- **Crear, editar, duplicar y reordenar rutinas** eligiendo ejercicios y definiendo series y repeticiones.
+- **Plantillas listas** (Push, Pull, Piernas, Full Body, Quema grasa) para empezar con un tap.
+- **Entrenamiento en vivo** — Registra peso, repeticiones y series set por set, con:
+  - ⏱️ **Cronómetro de sesión** y duración guardada en el historial.
+  - ⏳ **Temporizador de descanso automático** al completar cada serie (con vibración, +15s y saltar).
+  - 💾 **Sesión persistente**: si la app se cierra a media rutina, continúas donde ibas desde Inicio.
 - **Seguimiento de metas** — Si esta semana hiciste *135 lb en press de banca por 3×12*, la app lo guarda y te muestra esa marca como **objetivo a superar** la próxima vez.
-- **Progreso y récords personales** — Historial de entrenamientos, volumen total y tus mejores marcas por ejercicio.
+- **Progreso y récords personales** — Historial navegable con detalle de cada sesión, gráfica de evolución por ejercicio, racha semanal 🔥 y volumen total.
+- **Peso corporal** — Registra tu peso y ve la tendencia (ideal para bajar de peso o bulk).
+- **Respaldo** — Exporta todos tus datos y restáuralos en otro teléfono.
 - **Interfaz moderna** en modo oscuro, pensada para usarse fácil en el gym.
 
 ---
@@ -62,23 +68,28 @@ app/                      # Pantallas (Expo Router, navegación por archivos)
 ├── onboarding.tsx        # Bienvenida: nombre, objetivo y unidad
 ├── settings.tsx          # Editar perfil / objetivo
 ├── (tabs)/               # Navegación por pestañas
-│   ├── index.tsx         #   Inicio / Panel
-│   ├── routines.tsx      #   Mis rutinas
+│   ├── index.tsx         #   Inicio / Panel (racha, continuar sesión)
+│   ├── routines.tsx      #   Mis rutinas + plantillas
 │   ├── library.tsx       #   Biblioteca de ejercicios
-│   └── progress.tsx      #   Progreso y récords
-├── exercise/[id].tsx     # Detalle del ejercicio (video, músculos, variaciones)
-├── routine/new.tsx       # Crear rutina
+│   └── progress.tsx      #   Progreso, récords y peso corporal
+├── exercise/[id].tsx     # Detalle del ejercicio (video, músculos, variaciones, gráfica)
+├── routine/new.tsx       # Crear / editar rutina (con reordenamiento)
 ├── routine/[id].tsx      # Detalle de rutina
-└── workout/[id].tsx      # Entrenamiento en vivo (registrar series)
+├── history/[id].tsx      # Detalle de un entrenamiento del historial
+└── workout/[id].tsx      # Entrenamiento en vivo (series, descanso, cronómetro)
 
 src/
 ├── theme.ts              # Sistema de diseño (colores, espaciado, tipografía)
 ├── types.ts              # Modelos de datos (TypeScript)
+├── utils/dates.ts        # Fechas: semana, racha, formato de duración
 ├── data/
 │   ├── exercises.ts      # Base de datos de ejercicios
-│   └── goals.ts          # Objetivos de entrenamiento
-├── storage/store.tsx     # Estado global + persistencia local + cálculo de récords
-└── components/ui.tsx      # Componentes de interfaz reutilizables
+│   ├── goals.ts          # Objetivos de entrenamiento
+│   └── templates.ts      # Plantillas de rutinas predefinidas
+├── storage/store.tsx     # Estado global + persistencia + récords + respaldo
+└── components/
+    ├── ui.tsx            # Componentes de interfaz reutilizables
+    └── chart.tsx         # Mini gráfica de barras (sin dependencias)
 ```
 
 ---
@@ -86,11 +97,10 @@ src/
 ## 🗺️ Ideas para siguientes versiones
 
 - Reproducir el video tutorial **embebido** dentro de la app.
-- Temporizador de descanso automático entre series.
-- Gráficas de progreso por ejercicio a lo largo del tiempo.
 - Diagrama del cuerpo resaltando el músculo trabajado.
-- Cuentas y sincronización en la nube para respaldar tus datos.
-- Rutinas predefinidas por objetivo listas para empezar.
+- Cuentas y sincronización en la nube.
+- Notificaciones de recordatorio de entrenamiento.
+- Registro de duración/distancia para ejercicios de cardio.
 
 ---
 

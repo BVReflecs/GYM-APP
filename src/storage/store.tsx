@@ -8,17 +8,24 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  ActiveWorkout,
+  BodyWeightEntry,
   PersonalRecord,
   Routine,
   UserProfile,
   WorkoutLog,
 } from '../types';
+import { weeklyStreak } from '../utils/dates';
 
 const KEYS = {
   profile: 'gymforge.profile.v1',
   routines: 'gymforge.routines.v1',
   logs: 'gymforge.logs.v1',
+  active: 'gymforge.active.v1',
+  bodyweight: 'gymforge.bodyweight.v1',
 };
+
+const EXPORT_VERSION = 1;
 
 const DEFAULT_PROFILE: UserProfile = {
   name: '',
@@ -34,6 +41,11 @@ interface StoreValue {
   logs: WorkoutLog[];
   /** exerciseId -> personal record derived from logs. */
   records: Record<string, PersonalRecord>;
+  /** Live session that survives app restarts (null when not training). */
+  activeWorkout: ActiveWorkout | null;
+  bodyWeights: BodyWeightEntry[];
+  /** Consecutive weeks with at least one workout. */
+  streak: number;
 
   saveProfile: (p: Partial<UserProfile>) => void;
   addRoutine: (r: Routine) => void;
@@ -41,6 +53,13 @@ interface StoreValue {
   deleteRoutine: (id: string) => void;
   addLog: (l: WorkoutLog) => void;
   deleteLog: (id: string) => void;
+  setActiveWorkout: (a: ActiveWorkout | null) => void;
+  addBodyWeight: (e: BodyWeightEntry) => void;
+  deleteBodyWeight: (date: number) => void;
+  /** Serialize all user data as a JSON backup string. */
+  exportData: () => string;
+  /** Restore a backup created by exportData. Throws on invalid input. */
+  importData: (json: string) => void;
   /** The best set to beat next time for a given exercise, if any. */
   getTarget: (exerciseId: string) => PersonalRecord | undefined;
 }
@@ -94,19 +113,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [logs, setLogs] = useState<WorkoutLog[]>([]);
+  const [activeWorkout, setActiveWorkoutState] = useState<ActiveWorkout | null>(null);
+  const [bodyWeights, setBodyWeights] = useState<BodyWeightEntry[]>([]);
 
   // Load persisted state once on mount.
   useEffect(() => {
     (async () => {
       try {
-        const [p, r, l] = await Promise.all([
+        const [p, r, l, a, w] = await Promise.all([
           AsyncStorage.getItem(KEYS.profile),
           AsyncStorage.getItem(KEYS.routines),
           AsyncStorage.getItem(KEYS.logs),
+          AsyncStorage.getItem(KEYS.active),
+          AsyncStorage.getItem(KEYS.bodyweight),
         ]);
         if (p) setProfile({ ...DEFAULT_PROFILE, ...JSON.parse(p) });
         if (r) setRoutines(JSON.parse(r));
         if (l) setLogs(JSON.parse(l));
+        if (a) setActiveWorkoutState(JSON.parse(a));
+        if (w) setBodyWeights(JSON.parse(w));
       } catch (e) {
         console.warn('Failed to load storage', e);
       } finally {
@@ -187,7 +212,80 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [persist],
   );
 
+  const setActiveWorkout = useCallback(
+    (a: ActiveWorkout | null) => {
+      setActiveWorkoutState(a);
+      if (a) {
+        persist(KEYS.active, a);
+      } else {
+        AsyncStorage.removeItem(KEYS.active).catch(() => {});
+      }
+    },
+    [persist],
+  );
+
+  const addBodyWeight = useCallback(
+    (entry: BodyWeightEntry) => {
+      setBodyWeights((prev) => {
+        const next = [...prev, entry].sort((a, b) => a.date - b.date);
+        persist(KEYS.bodyweight, next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  const deleteBodyWeight = useCallback(
+    (date: number) => {
+      setBodyWeights((prev) => {
+        const next = prev.filter((e) => e.date !== date);
+        persist(KEYS.bodyweight, next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  const exportData = useCallback(() => {
+    return JSON.stringify(
+      {
+        app: 'gymforge',
+        version: EXPORT_VERSION,
+        exportedAt: Date.now(),
+        profile,
+        routines,
+        logs,
+        bodyWeights,
+      },
+      null,
+      2,
+    );
+  }, [profile, routines, logs, bodyWeights]);
+
+  const importData = useCallback(
+    (json: string) => {
+      const data = JSON.parse(json);
+      if (data?.app !== 'gymforge' || !Array.isArray(data.routines) || !Array.isArray(data.logs)) {
+        throw new Error('El archivo no es un respaldo válido de GymForge.');
+      }
+      const nextProfile = { ...DEFAULT_PROFILE, ...(data.profile ?? {}), onboarded: true };
+      const nextRoutines: Routine[] = data.routines;
+      const nextLogs: WorkoutLog[] = data.logs;
+      const nextWeights: BodyWeightEntry[] = Array.isArray(data.bodyWeights) ? data.bodyWeights : [];
+      setProfile(nextProfile);
+      setRoutines(nextRoutines);
+      setLogs(nextLogs);
+      setBodyWeights(nextWeights);
+      persist(KEYS.profile, nextProfile);
+      persist(KEYS.routines, nextRoutines);
+      persist(KEYS.logs, nextLogs);
+      persist(KEYS.bodyweight, nextWeights);
+    },
+    [persist],
+  );
+
   const records = useMemo(() => computeRecords(logs), [logs]);
+  const streak = useMemo(() => weeklyStreak(logs.map((l) => l.date)), [logs]);
   const getTarget = useCallback(
     (exerciseId: string) => records[exerciseId],
     [records],
@@ -199,12 +297,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     routines,
     logs,
     records,
+    activeWorkout,
+    bodyWeights,
+    streak,
     saveProfile,
     addRoutine,
     updateRoutine,
     deleteRoutine,
     addLog,
     deleteLog,
+    setActiveWorkout,
+    addBodyWeight,
+    deleteBodyWeight,
+    exportData,
+    importData,
     getTarget,
   };
 
